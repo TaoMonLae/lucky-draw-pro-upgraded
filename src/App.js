@@ -145,6 +145,8 @@ export default function App() {
   const [subtitle, setSubtitle] = useState('The most exciting draw on the web!');
   const [titleLineSpacing, setTitleLineSpacing] = useState(1.2);
   const [subtitleLineSpacing, setSubtitleLineSpacing] = useState(1.5);
+  const [titleFontSize, setTitleFontSize] = useState(48);
+  const [subtitleFontSize, setSubtitleFontSize] = useState(16);
   const [titleColor, setTitleColor] = useState('');
   const [subtitleColor, setSubtitleColor] = useState('');
   const [titleFont, setTitleFont] = useState('sans-serif');
@@ -153,7 +155,6 @@ export default function App() {
   const [logo, setLogo] = useState(null);
   const [backgroundImage, setBackgroundImage] = useState('');
   const [settingsTab, setSettingsTab] = useState('main');
-  const [sessionToRestore, setSessionToRestore] = useState(null);
   const [charge, setCharge] = useState(0);
   const [isCharging, setIsCharging] = useState(false);
   const [masterVolume, setMasterVolume] = useState(0);
@@ -188,7 +189,8 @@ export default function App() {
         numPrizes, drawOrder, inputValue, maxDigits, theme, logo,
         title, subtitle, titleLineSpacing, subtitleLineSpacing, winnersPerPrize,
         backgroundImage, masterVolume, sfxVolume, musicVolume,
-        titleColor, subtitleColor, titleFont, subtitleFont
+        titleColor, subtitleColor, titleFont, subtitleFont,
+        titleFontSize, subtitleFontSize
     };
     try {
         localStorage.setItem('lucky-draw-autosave', JSON.stringify(appState));
@@ -199,19 +201,9 @@ export default function App() {
     initialTickets, remainingTickets, winnersHistory, numPrizes, drawOrder, 
     inputValue, maxDigits, theme, logo, title, subtitle, titleLineSpacing, 
     subtitleLineSpacing, winnersPerPrize, backgroundImage, masterVolume, 
-    sfxVolume, musicVolume, titleColor, subtitleColor, titleFont, subtitleFont
+    sfxVolume, musicVolume, titleColor, subtitleColor, titleFont, subtitleFont,
+    titleFontSize, subtitleFontSize
   ]);
-
-  useEffect(() => {
-    try {
-        const savedSession = localStorage.getItem('lucky-draw-autosave');
-        if (savedSession) {
-            setSessionToRestore(JSON.parse(savedSession));
-        }
-    } catch (e) {
-        console.error("Failed to load session from localStorage", e);
-    }
-  }, []);
 
   const restoreSession = (data) => {
     try {
@@ -230,6 +222,8 @@ export default function App() {
         setSubtitle(data.subtitle || 'The most exciting draw on the web!');
         setTitleLineSpacing(data.titleLineSpacing || 1.2);
         setSubtitleLineSpacing(data.subtitleLineSpacing || 1.5);
+        setTitleFontSize(data.titleFontSize || 48);
+        setSubtitleFontSize(data.subtitleFontSize || 16);
         setWinnersPerPrize(data.winnersPerPrize || 1);
         setTheme(data.theme || 'Event Night');
         setLogo(data.logo || null);
@@ -243,7 +237,6 @@ export default function App() {
         setSubtitleFont(data.subtitleFont || 'sans-serif');
         const firstTicket = (data.remainingTickets && data.remainingTickets[0]) || (data.initialTickets && data.initialTickets[0]) || '1';
         setDisplayDigits(String(firstTicket).padStart(restoredMaxDigits, '0').split(''));
-        setSessionToRestore(null);
         setSuccessMessage('Session restored successfully!');
         setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err) {
@@ -367,7 +360,8 @@ export default function App() {
         numPrizes, drawOrder, inputValue, maxDigits, theme, logo,
         title, subtitle, titleLineSpacing, subtitleLineSpacing, winnersPerPrize,
         backgroundImage, masterVolume, sfxVolume, musicVolume,
-        titleColor, subtitleColor, titleFont, subtitleFont
+        titleColor, subtitleColor, titleFont, subtitleFont,
+        titleFontSize, subtitleFontSize
     };
     const blob = new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -378,6 +372,21 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
   
+  const handleLoadSession = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            restoreSession(JSON.parse(event.target.result));
+        } catch (err) {
+            setError('Invalid or corrupted session file.');
+            setTimeout(() => setError(''), 3000);
+        }
+    };
+    reader.readAsText(file);
+    e.target.value = null;
+  };
   
   const handleFileImport = (e) => {
     const file = e.target.files[0];
@@ -467,6 +476,74 @@ export default function App() {
     setCharge(0);
   };
 
+  const runSingleWinnerAnimation = (winnerTicket, isFinalWinnerOfBatch) => {
+    return new Promise((resolve) => {
+        const winnerDigits = getDigits(winnerTicket);
+        const isFinalPrize = (drawOrder === 'desc' && (numPrizes - winnersHistory.length) === 1) || (drawOrder === 'asc' && (winnersHistory.length + 1) === numPrizes);
+        const slowMoDuration = isFinalPrize && isFinalWinnerOfBatch ? 14000 : 4000;
+        
+        const animationStart = Date.now();
+        const lockTimings = Array.from({ length: maxDigits - 1 }, (_, i) => 800 + i * 400);
+        const slowMoStartTime = lockTimings[lockTimings.length - 1] || 800;
+        let hasAlmostTriggered = false;
+
+        const animationLoop = () => {
+            const elapsed = Date.now() - animationStart;
+            let nextDelay = 75;
+
+            if (elapsed < slowMoStartTime) {
+                const newDisplayDigits = winnerDigits.map((digit, index) => {
+                    if (index >= maxDigits - 1) return Math.floor(Math.random() * 10);
+                    if (elapsed >= lockTimings[index]) return digit;
+                    return Math.floor(Math.random() * 10);
+                });
+                setDisplayDigits(newDisplayDigits);
+                if (tickSynth.current) tickSynth.current.triggerAttackRelease("C1", "8n");
+            } else {
+                const slowMoElapsed = elapsed - slowMoStartTime;
+                if (slowMoElapsed >= slowMoDuration) {
+                    setDisplayDigits(winnerDigits);
+                    resolve(); // Resolve promise when animation for this winner is done
+                    return;
+                }
+                
+                if (isFinalPrize && slowMoElapsed >= slowMoDuration - 2000 && !hasAlmostTriggered) {
+                    hasAlmostTriggered = true;
+                    let fakeDigit = Math.floor(Math.random() * 10);
+                    const finalWinnerDigit = parseInt(winnerDigits[maxDigits - 1], 10);
+                    while (fakeDigit === finalWinnerDigit) {
+                        fakeDigit = Math.floor(Math.random() * 10);
+                    }
+                    
+                    const newDisplayDigits = [...winnerDigits];
+                    newDisplayDigits[maxDigits - 1] = fakeDigit;
+                    setDisplayDigits(newDisplayDigits);
+    
+                    timeoutRef.current = setTimeout(() => {
+                        timeoutRef.current = setTimeout(animationLoop, 50);
+                    }, 800);
+                    return;
+                }
+
+                const newDisplayDigits = [...winnerDigits];
+                const finalDigitIndex = maxDigits - 1;
+                const progress = slowMoElapsed / slowMoDuration;
+                const easing = 1 - Math.pow(1 - progress, 2);
+                const totalSteps = 10;
+                const currentStep = Math.floor(easing * totalSteps);
+                const finalDigit = parseInt(winnerDigits[finalDigitIndex], 10);
+                newDisplayDigits[finalDigitIndex] = (finalDigit + totalSteps - currentStep) % 10;
+                setDisplayDigits(newDisplayDigits);
+                
+                if (tickSynth.current) tickSynth.current.triggerAttackRelease("C1", "8n");
+                nextDelay = 50 + easing * 400;
+            }
+            timeoutRef.current = setTimeout(animationLoop, nextDelay);
+        };
+        animationLoop();
+    });
+  };
+
   const drawNextWinner = async () => {
     const numToDraw = Math.min(winnersPerPrize, remainingTickets.length);
     if (drawing || numToDraw === 0 || winnersHistory.length >= numPrizes) {
@@ -479,105 +556,48 @@ export default function App() {
     setError('');
     setShowConfetti(false);
     setPulse(true);
-    almostTriggered.current = false;
     
     const currentPrizeName = getPrizeName();
     setCurrentPrize(currentPrizeName);
 
     const drawnTickets = [];
-    const tempRemaining = [...remainingTickets];
+    let tempRemaining = [...remainingTickets];
     for(let i = 0; i < numToDraw; i++) {
         const winnerIndex = Math.floor(Math.random() * tempRemaining.length);
         drawnTickets.push(tempRemaining.splice(winnerIndex, 1)[0]);
     }
 
-    const firstWinnerDigits = getDigits(drawnTickets[0]);
-
-    const prizeNumber = drawOrder === 'asc' ? winnersHistory.length + 1 : numPrizes - winnersHistory.length;
-    const isFinalPrize = (drawOrder === 'desc' && prizeNumber === 1) || (drawOrder === 'asc' && prizeNumber === numPrizes);
-
-    const animationStart = Date.now();
-    
-    const lockTimings = Array.from({ length: maxDigits - 1 }, (_, i) => 800 + i * 400);
-    const slowMoStartTime = lockTimings[lockTimings.length - 1] || 800;
-    const slowMoDuration = isFinalPrize ? 14000 : 4000;
-
-    const animationLoop = () => {
-        const elapsed = Date.now() - animationStart;
-        let nextDelay = 75;
-
-        if (elapsed < slowMoStartTime) {
-            const newDisplayDigits = firstWinnerDigits.map((digit, index) => {
-                if (index >= maxDigits - 1) return Math.floor(Math.random() * 10);
-                if (elapsed >= lockTimings[index]) {
-                    return digit;
-                }
-                return Math.floor(Math.random() * 10);
-            });
-            setDisplayDigits(newDisplayDigits);
-            if (tickSynth.current) tickSynth.current.triggerAttackRelease("C1", "8n");
-        } 
-        else {
-            const slowMoElapsed = elapsed - slowMoStartTime;
-
-            if (slowMoElapsed >= slowMoDuration) {
-                setDisplayDigits(firstWinnerDigits);
-                const newHistory = [...winnersHistory, { prize: currentPrizeName, tickets: drawnTickets }];
-                setWinnersHistory(newHistory);
-                setRemainingTickets(tempRemaining);
-                setDrawing(false);
-                setShowConfetti(true);
-                setTimeout(() => setShowConfetti(false), 8000);
-
-                if (winSynth.current) {
-                    const now = window.Tone.now();
-                    if (isFinalPrize) {
-                        fireworkWhoosh.current.triggerAttack(now);
-                        for(let i = 0; i < 10; i++) {
-                           fireworkCrackle.current.triggerAttackRelease("16n", now + 0.3 + Math.random() * 0.5);
-                        }
-                        winSynth.current.triggerAttackRelease(["C4", "G4", "C5", "E5"], "2s", now + 0.8);
-                        winSynth.current.triggerAttackRelease(["F4", "A4", "C5", "F5"], "2s", now + 1.8);
-                        winSynth.current.triggerAttackRelease(["G4", "B4", "D5", "G5"], "3s", now + 2.8);
-                    } else {
-                        winSynth.current.triggerAttackRelease(["C4", "E4", "G4"], "1s");
+    for (let i = 0; i < drawnTickets.length; i++) {
+        const ticket = drawnTickets[i];
+        const isFinalWinnerOfBatch = i === drawnTickets.length - 1;
+        await runSingleWinnerAnimation(ticket, isFinalWinnerOfBatch);
+        if (isFinalWinnerOfBatch) {
+             const isFinalPrize = (drawOrder === 'desc' && (numPrizes - winnersHistory.length) === 1) || (drawOrder === 'asc' && (winnersHistory.length + 1) === numPrizes);
+             if (winSynth.current) {
+                const now = window.Tone.now();
+                if (isFinalPrize) {
+                    fireworkWhoosh.current.triggerAttack(now);
+                    for(let i = 0; i < 10; i++) {
+                       fireworkCrackle.current.triggerAttackRelease("16n", now + 0.3 + Math.random() * 0.5);
                     }
+                    winSynth.current.triggerAttackRelease(["C4", "G4", "C5", "E5"], "2s", now + 0.8);
+                    winSynth.current.triggerAttackRelease(["F4", "A4", "C5", "F5"], "2s", now + 1.8);
+                    winSynth.current.triggerAttackRelease(["G4", "B4", "D5", "G5"], "3s", now + 2.8);
+                } else {
+                    winSynth.current.triggerAttackRelease(["C4", "E4", "G4"], "1s");
                 }
-                return;
             }
-            
-            if (isFinalPrize && slowMoElapsed >= slowMoDuration - 2000 && !almostTriggered.current) {
-                almostTriggered.current = true;
-                let fakeDigit = Math.floor(Math.random() * 10);
-                const finalWinnerDigit = parseInt(firstWinnerDigits[maxDigits - 1], 10);
-                while (fakeDigit === finalWinnerDigit) {
-                    fakeDigit = Math.floor(Math.random() * 10);
-                }
-                
-                const newDisplayDigits = [...firstWinnerDigits];
-                newDisplayDigits[maxDigits - 1] = fakeDigit;
-                setDisplayDigits(newDisplayDigits);
-
-                timeoutRef.current = setTimeout(() => {
-                    timeoutRef.current = setTimeout(animationLoop, 50);
-                }, 800);
-                return;
-            }
-
-            const newDisplayDigits = [...firstWinnerDigits];
-            newDisplayDigits[maxDigits - 1] = Math.floor(Math.random() * 10);
-            setDisplayDigits(newDisplayDigits);
-            if (tickSynth.current) tickSynth.current.triggerAttackRelease("C1", "8n");
-
-            const progress = slowMoElapsed / slowMoDuration;
-            const easing = 1 - Math.pow(1 - progress, 4);
-            nextDelay = 50 + easing * 800;
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 5000);
+        } else {
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Pause between reveals
         }
+    }
 
-        timeoutRef.current = setTimeout(animationLoop, nextDelay);
-    };
-
-    animationLoop();
+    const newHistory = [...winnersHistory, { prize: currentPrizeName, tickets: drawnTickets }];
+    setWinnersHistory(newHistory);
+    setRemainingTickets(tempRemaining);
+    setDrawing(false);
   };
 
   useEffect(() => {
@@ -658,23 +678,16 @@ export default function App() {
       
        {logo && <img src={logo} alt="Event Logo" className="absolute top-4 left-4 h-16 w-auto z-30" />}
        
-       {sessionToRestore && (
-        <div className="absolute top-0 left-0 right-0 bg-yellow-500 text-black p-2 flex justify-center items-center gap-4 z-50">
-            <span>We found a previous session.</span>
-            <Button onClick={() => restoreSession(sessionToRestore)} className="!bg-black !text-white text-sm !py-1">Restore</Button>
-            <Button onClick={() => setSessionToRestore(null)} className="!bg-transparent !text-black text-sm !py-1">Dismiss</Button>
+       {successMessage && (
+        <div className="absolute top-0 left-0 right-0 bg-green-600 text-white p-2 flex justify-center items-center gap-4 z-50">
+            <span>{successMessage}</span>
+            <Button onClick={() => setSuccessMessage('')} className="!bg-transparent !text-white text-lg !py-0 !px-2">&times;</Button>
         </div>
        )}
        {error && (
         <div className="absolute top-0 left-0 right-0 bg-red-600 text-white p-2 flex justify-center items-center gap-4 z-50">
             <span>Error: {error}</span>
             <Button onClick={() => setError('')} className="!bg-transparent !text-white text-lg !py-0 !px-2">&times;</Button>
-        </div>
-       )}
-       {successMessage && (
-        <div className="absolute top-0 left-0 right-0 bg-green-600 text-white p-2 flex justify-center items-center gap-4 z-50">
-            <span>{successMessage}</span>
-            <Button onClick={() => setSuccessMessage('')} className="!bg-transparent !text-white text-lg !py-0 !px-2">&times;</Button>
         </div>
        )}
 
@@ -724,8 +737,16 @@ export default function App() {
                                 <select value={titleFont} onChange={e => setTitleFont(e.target.value)} className="w-full p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--panel-border)] text-sm">
                                     {Object.keys(fonts).map(fontName => (<option key={fontName} value={fonts[fontName]}>{fontName}</option>))}
                                 </select>
-                                <label className="text-xs mt-1 block">Line Spacing: {titleLineSpacing}</label>
-                                <input type="range" min="0.8" max="2" step="0.1" value={titleLineSpacing} onChange={e => setTitleLineSpacing(e.target.value)} className="w-full" />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-xs mt-1 block">Font Size (px)</label>
+                                        <Input type="number" value={titleFontSize} onChange={e => setTitleFontSize(parseInt(e.target.value, 10) || 16)} className="w-full bg-[var(--input-bg)] border-[var(--panel-border)]" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs mt-1 block">Line Spacing</label>
+                                        <Input type="number" step="0.1" value={titleLineSpacing} onChange={e => setTitleLineSpacing(e.target.value)} className="w-full bg-[var(--input-bg)] border-[var(--panel-border)]" />
+                                    </div>
+                                </div>
                             </div>
                             <div>
                                 <label className="font-semibold text-sm mb-1 block">Event Subtitle</label>
@@ -737,8 +758,16 @@ export default function App() {
                                 <select value={subtitleFont} onChange={e => setSubtitleFont(e.target.value)} className="w-full p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--panel-border)] text-sm">
                                     {Object.keys(fonts).map(fontName => (<option key={fontName} value={fonts[fontName]}>{fontName}</option>))}
                                 </select>
-                                <label className="text-xs mt-1 block">Line Spacing: {subtitleLineSpacing}</label>
-                                <input type="range" min="0.8" max="2.5" step="0.1" value={subtitleLineSpacing} onChange={e => setSubtitleLineSpacing(e.target.value)} className="w-full" />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-xs mt-1 block">Font Size (px)</label>
+                                        <Input type="number" value={subtitleFontSize} onChange={e => setSubtitleFontSize(parseInt(e.target.value, 10) || 16)} className="w-full bg-[var(--input-bg)] border-[var(--panel-border)]" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs mt-1 block">Line Spacing</label>
+                                        <Input type="number" step="0.1" value={subtitleLineSpacing} onChange={e => setSubtitleLineSpacing(e.target.value)} className="w-full bg-[var(--input-bg)] border-[var(--panel-border)]" />
+                                    </div>
+                                </div>
                             </div>
                             <div>
                                 <label className="font-semibold text-sm mb-1 block">Ticket Numbers</label>
@@ -811,7 +840,7 @@ export default function App() {
                     {settingsTab === 'about' && (
                         <div className="space-y-4 text-[var(--text-muted)]">
                             <h3 className="text-xl font-bold text-[var(--text-color)]">Lucky Draw Pro</h3>
-                            <p>Version 1.8.0</p>
+                            <p>Version 1.9.0</p>
                             <p>A fully customizable application for running exciting live lucky draws for any event. This tool is designed for reliability and high audience engagement.</p>
                             <p className="pt-4">Created by: <span className="font-bold text-[var(--text-color)]">Tao Mon Lae</span></p>
                         </div>
@@ -822,8 +851,8 @@ export default function App() {
       </AnimatePresence>
       
       <div className="text-center z-10" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>
-        <h1 className="text-5xl font-bold" style={{color: titleColor || 'var(--title-color)', lineHeight: titleLineSpacing, fontFamily: titleFont}}>{title}</h1>
-        <p className="mt-2" style={{color: subtitleColor || 'var(--text-muted)', lineHeight: subtitleLineSpacing, fontFamily: subtitleFont}}>{subtitle}</p>
+        <h1 className="font-bold" style={{color: titleColor || 'var(--title-color)', lineHeight: titleLineSpacing, fontFamily: titleFont, fontSize: `${titleFontSize}px`}}>{title}</h1>
+        <p className="mt-2" style={{color: subtitleColor || 'var(--text-muted)', lineHeight: subtitleLineSpacing, fontFamily: subtitleFont, fontSize: `${subtitleFontSize}px`}}>{subtitle}</p>
       </div>
 
       <div className="flex flex-col items-center z-20">
