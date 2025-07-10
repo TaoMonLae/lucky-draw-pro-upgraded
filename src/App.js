@@ -172,7 +172,7 @@ export default function App() {
   const exportRef = useRef(null);
   const exportAllRef = useRef(null);
   const audioStarted = useRef(false);
-  const almostTriggered = useRef(false);
+  //const almostTriggered = useRef(false);
   const sfxVolumeNode = useRef(null);
   const musicVolumeNode = useRef(null);
   const tickSynth = useRef(null);
@@ -181,6 +181,7 @@ export default function App() {
   const fireworkCrackle = useRef(null);
   const drumrollSynth = useRef(null);
   const applauseSynth = useRef(null);
+
 
   // --- SESSION MANAGEMENT ---
   useEffect(() => {
@@ -372,21 +373,22 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
   
-  const handleLoadSession = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        try {
-            restoreSession(JSON.parse(event.target.result));
-        } catch (err) {
-            setError('Invalid or corrupted session file.');
-            setTimeout(() => setError(''), 3000);
-        }
-    };
-    reader.readAsText(file);
-    e.target.value = null;
+  // eslint-disable-next-line no-unused-vars
+const handleLoadSession = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      restoreSession(JSON.parse(event.target.result));
+    } catch (err) {
+      setError('Invalid or corrupted session file.');
+      setTimeout(() => setError(''), 3000);
+    }
   };
+  reader.readAsText(file);
+  e.target.value = null;
+};
   
   const handleFileImport = (e) => {
     const file = e.target.files[0];
